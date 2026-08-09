@@ -250,6 +250,43 @@ def infer_workplace(job: Dict) -> str:
     return "On-site" if job.get("location") else ""
 
 
+def _text_val(value) -> str:
+    """
+    pandas uses NaN for empty cells, and NaN is truthy — so a plain str() turns
+    a missing field into the literal string "nan". Normalise those to "".
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in ("nan", "none", "nat", "<na>") else text
+
+
+def _num_val(value):
+    """Return a float, or None when the cell is missing/NaN."""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if num != num else num  # NaN is the only value unequal to itself
+
+
+def _format_salary(row) -> str:
+    lo = _num_val(row.get("min_amount"))
+    hi = _num_val(row.get("max_amount"))
+    if lo is None and hi is None:
+        return ""
+
+    currency = _text_val(row.get("currency"))
+    interval = _text_val(row.get("interval")) or _text_val(row.get("salary_source"))
+    suffix = f" / {interval}" if interval else ""
+    prefix = f"{currency} " if currency else ""
+
+    if lo is not None and hi is not None:
+        return f"{prefix}{lo:,.0f} – {hi:,.0f}{suffix}"
+    amount = lo if lo is not None else hi
+    return f"{prefix}{amount:,.0f}+{suffix}"
+
+
 # ── Indeed + LinkedIn via jobspy ─────────────────────────────────────────────
 def fetch_jobspy(
     search: str,
@@ -273,28 +310,18 @@ def fetch_jobspy(
         )
         out = []
         for _, row in df.iterrows():
-            salary = ""
-            mn = row.get("min_amount")
-            mx = row.get("max_amount")
-            cur = row.get("currency", "")
-            interval = row.get("salary_source", "")
-            if mn and mx:
-                salary = f"{cur} {mn:,.0f} – {mx:,.0f} / {interval}"
-            elif mn:
-                salary = f"{cur} {mn:,.0f}+ / {interval}"
-
-            site = str(row.get("site", "")).capitalize()
+            site = _text_val(row.get("site")).capitalize()
             region = "Local" if country.lower() in ("pk", "pakistan") else "International"
             out.append({
-                "id": f"jobspy-{site}-{row.get('id', '')}",
-                "title": str(row.get("title", "")),
-                "company": str(row.get("company", "")),
-                "location": str(row.get("location", "")),
-                "job_type": str(row.get("job_type", "")),
-                "salary": salary,
-                "description": _strip_html(str(row.get("description", "")))[:3000],
-                "url": str(row.get("job_url", "")),
-                "posted_at": str(row.get("date_posted", ""))[:10],
+                "id": f"jobspy-{site}-{_text_val(row.get('id'))}",
+                "title": _text_val(row.get("title")),
+                "company": _text_val(row.get("company")),
+                "location": _text_val(row.get("location")),
+                "job_type": _text_val(row.get("job_type")),
+                "salary": _format_salary(row),
+                "description": _strip_html(_text_val(row.get("description")))[:3000],
+                "url": _text_val(row.get("job_url")),
+                "posted_at": _text_val(row.get("date_posted"))[:10],
                 "source": site,
                 "region": region,
             })
