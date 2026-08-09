@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+
+# Machine-specific launcher — hardcodes local Anaconda paths
+Job Hunter.bat
+*.pdf
+*.docx
+venv/
+.venv/
